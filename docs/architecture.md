@@ -1,9 +1,12 @@
 # Architecture
 
-KWin VFX is an in-process OpenGL effect for **KWin 6.8.1**. The implementation
-was checked against the matching KWin source and installed headers. These are
-private interfaces, not a stable third-party ABI. CMake and the Arch package
-pin that version; a KWin update requires source review and rebuilding.
+KWin VFX is an in-process OpenGL effect verified against **KWin 6.8.1** and its
+matching source and headers. CMake accepts 6.8.1 through the 6.8 series, compiling
+against the installed headers. These are private interfaces without a stable
+third-party ABI. KWin's plugin interface ID includes the full version, so the
+binary must be rebuilt after even a patch update. The Arch binary package pins
+the exact version recorded by CMake during its build. Later 6.8 patches remain
+subject to build/runtime validation; other minor releases require API review.
 
 ## Rendering integration
 

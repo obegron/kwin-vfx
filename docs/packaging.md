@@ -39,10 +39,14 @@ kwin-vfx-setup enable
 ```
 
 This builds **kwin-vfx**, which conflicts with the NVIDIA variant. Both variants
-are pinned to the audited **KWin 6.8.1** private API. A KWin update requires a
-matching source update/rebuild; source building alone does not guarantee that
-changed private APIs remain compatible. Package version constraints make that
-dependency explicit. GPU/compositor tests are separate from `makepkg check()`;
+accept **KWin >=6.8.1 and <6.9** for source builds. CMake records the actual
+installed KWin version, and `package()` uses it for the binary's exact runtime
+dependency (for example, `kwin=6.8.2` when built against 6.8.2). KWin's plugin
+loader requires that full version match, so rebuild after every KWin version
+update and use a fresh login. Rebuilding is manual; no automatic rebuild hook
+is installed. Only 6.8.1 is currently verified; later patch releases still need
+validation, and other minor releases need compatibility review.
+GPU/compositor tests are separate from `makepkg check()`;
 the package's checks cover the CPU-only profiler and offline installer/archive
 regressions, and work without a desktop or CUDA device.
 
@@ -97,7 +101,7 @@ Arch dependencies for the shader build are `base-devel cmake ninja
 extra-cmake-modules kwin qt6-base qt6-declarative kglobalaccel kdecoration
 vulkan-headers python python-dbus`; the NVIDIA build adds `cuda` and compatible
 `nvidia-utils`. KWin's development CMake exports bring in its other development
-dependencies. CMake rejects an un-audited KWin version. The installer does not
+dependencies. CMake rejects versions outside the supported build range. The installer does not
 silently install system dependencies; `makepkg -si` is the dependency-managed route.
 
 `--prefix` and `--build-dir` customize a source install. `--no-setup` installs files

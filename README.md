@@ -4,8 +4,9 @@ Native per-window visual enhancement for KDE Plasma 6 on Wayland. Apply
 sharpening, denoise, deblur and film grain to application windows, including
 browsers and games, without extensions or a separate playback window.
 
-**Experimental; requires KWin 6.8.1 and its OpenGL compositor.** The plugin uses
-private KWin APIs and must be reviewed and rebuilt for other KWin versions.
+**Experimental; builds against KWin 6.8.1–6.8.x and its OpenGL compositor.**
+KWin 6.8.1 is verified. The plugin uses private APIs and must be rebuilt after
+KWin updates; other minor releases require compatibility review.
 
 - GPU shaders provide Contrast Adaptive Sharpening (CAS), spatial denoise and
   animated monochrome film grain without NVIDIA dependencies.

@@ -6,7 +6,7 @@ pkgdesc='Per-window CAS, film grain and optional NVIDIA restoration for KWin Way
 arch=('x86_64')
 url='https://github.com/obegron/kwin-vfx'
 license=('GPL-2.0-or-later' 'MIT')
-depends=('glibc' 'gcc-libs' 'kwin=6.8.1' 'qt6-base>=6.11.0' 'qt6-declarative'
+depends=('glibc' 'gcc-libs' 'kwin>=6.8.1' 'kwin<6.9' 'qt6-base>=6.11.0' 'qt6-declarative'
          'kconfig' 'kcoreaddons' 'kglobalaccel>=6.30' 'kwindowsystem' 'kdecoration'
          'libepoxy' 'python' 'python-dbus'@NVIDIA_DEPENDENCY@)
 makedepends=('cmake' 'ninja' 'extra-cmake-modules' 'vulkan-headers'@CUDA_DEPENDENCY@)
@@ -32,6 +32,18 @@ check() {
 }
 
 package() {
+    local _kwin_version _dependency
+    local -a _runtime_depends=()
+    read -r _kwin_version < build/kwin-vfx-kwin-version || return 1
+    [[ $_kwin_version =~ ^6\.8\.[0-9]+$ ]] || return 1
+    # Keep the source build range; pin the binary to its actual build headers.
+    for _dependency in "${depends[@]}"; do
+        case $_dependency in
+            kwin|kwin'>'*|kwin'<'*|kwin'='*) ;;
+            *) _runtime_depends+=("$_dependency") ;;
+        esac
+    done
+    depends=("${_runtime_depends[@]}" "kwin=${_kwin_version}")
     DESTDIR="${pkgdir}" cmake --install build
     install -Dm644 "kwin-vfx-${pkgver}/docs/packaging.md" \
         "${pkgdir}/usr/share/doc/kwin-vfx/packaging.md"

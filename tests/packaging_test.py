@@ -176,6 +176,45 @@ class DesktopSetupTests(unittest.TestCase):
 
 
 class SourcePackageTests(unittest.TestCase):
+    def test_binary_dependency_uses_the_recorded_build_version(self):
+        for nvidia in (False,True):
+            with self.subTest(nvidia=nvidia),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                package.prepare(ROOT,root,nvidia)
+                (root/"build").mkdir()
+                (root/"build/kwin-vfx-kwin-version").write_text("6.8.7\n")
+                result=subprocess.run(["bash","-e","-c",'''
+source "$1"
+cmake() { :; }
+install() { :; }
+pkgdir="$2/pkg"
+package
+printf '%s\\n' "${depends[@]}"
+''',"test-package",str(root/"PKGBUILD"),str(root)],cwd=root,text=True,capture_output=True,check=True)
+                dependencies=result.stdout.splitlines()
+                self.assertEqual([value for value in dependencies if value.startswith("kwin") and not value.startswith("kwindowsystem")],["kwin=6.8.7"])
+                self.assertIn("kwindowsystem",dependencies)
+                self.assertIn("qt6-base>=6.11.0",dependencies)
+                self.assertEqual("nvidia-utils" in dependencies,nvidia)
+
+    def test_packaging_refuses_missing_or_invalid_build_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);package.prepare(ROOT,root,False);(root/"build").mkdir()
+            marker=root/"installed"
+            for version in (None,"","6.9.0","6.8.invalid"):
+                with self.subTest(version=version):
+                    if version is not None:(root/"build/kwin-vfx-kwin-version").write_text(version+"\n")
+                    result=subprocess.run(["bash","-e","-c",'''
+source "$1"
+cmake() { touch "$VFX_TEST_INSTALL_MARKER"; }
+install() { :; }
+pkgdir="$3/pkg"
+package
+''',"test-package",str(root/"PKGBUILD"),str(marker),str(root)],cwd=root,text=True,capture_output=True,
+                                          env=dict(os.environ,VFX_TEST_INSTALL_MARKER=str(marker)))
+                    self.assertNotEqual(result.returncode,0)
+                    self.assertFalse(marker.exists())
+
     def test_reproducible_source_only_archives_and_real_checksums(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
