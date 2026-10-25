@@ -8,6 +8,7 @@ build_dir="${project_root}/build-user"
 nvidia=ON
 wheel_file=''
 download_runtime=0
+accept_license=0
 runtime_root=''
 stage_dir=''
 setup=1
@@ -18,6 +19,7 @@ while (($#)); do
         --build-dir) build_dir="$2"; shift 2 ;;
         --wheel) wheel_file="$2"; shift 2 ;;
         --download-runtime) download_runtime=1; shift ;;
+        --accept-license) accept_license=1; shift ;;
         --runtime-root) runtime_root="$2"; shift 2 ;;
         --stage) stage_dir="$2"; setup=0; shift 2 ;;
         --no-setup) setup=0; shift ;;
@@ -25,6 +27,7 @@ while (($#)); do
             printf 'Usage: scripts/install-user.sh [--shader-only] [--wheel FILE | --download-runtime] [--runtime-root DIR]\n'
             printf 'Builds from source and installs under ~/.local without sudo. First use needs a logout/login.\n'
             printf 'Options: --prefix DIR --build-dir DIR --no-setup --stage DIR (testing, no live settings)\n'
+            printf 'NVIDIA runtime: --accept-license confirms acceptance of the applicable NVIDIA terms (otherwise prompts).\n'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -51,6 +54,7 @@ if [[ -z "$runtime_root" && ( -n "$wheel_file" || "$download_runtime" == 1 ) ]];
     runtime_root="${XDG_DATA_HOME:-$HOME/.local/share}/kwin-vfx/runtime/nvidia-vfx-0.2.0.0"
 fi
 if [[ -n "$runtime_root" ]]; then runtime_args=(--output-dir "$runtime_root"); fi
+if [[ "$accept_license" == 1 ]]; then runtime_args+=(--accept-license); fi
 if [[ -n "$wheel_file" ]]; then "$install_prefix/bin/kwin-vfx-runtime" "$wheel_file" "${runtime_args[@]}"; fi
 if [[ "$download_runtime" == 1 ]]; then "$install_prefix/bin/kwin-vfx-runtime" --download "${runtime_args[@]}"; fi
 if [[ "$setup" == 1 ]]; then

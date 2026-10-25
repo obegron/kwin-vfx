@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Offline installer safety, migration and source-package checks. No live bus/GPU."""
 import argparse
+import contextlib
 import hashlib
 import importlib.util
+import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -80,6 +83,67 @@ class RuntimeTests(unittest.TestCase):
             root=Path(directory);digest=self.wheel(root/runtime.WHEEL)
             with mock.patch.object(runtime,"SHA256",digest),mock.patch.object(runtime.urllib.request,"urlopen") as request:
                 self.assertEqual(runtime.download_wheel(root),root/runtime.WHEEL);request.assert_not_called()
+
+
+class RuntimeLicenseTests(unittest.TestCase):
+    def test_unattended_download_and_local_install_require_acceptance(self):
+        for arguments in (("--download",), ("official.whl",)):
+            with self.subTest(arguments=arguments), tempfile.TemporaryDirectory() as directory:
+                destination=Path(directory)/"runtime";cache=Path(directory)/"cache"
+                with mock.patch.object(runtime.sys,"argv",["kwin-vfx-runtime",*arguments,"--output-dir",str(destination),"--cache-dir",str(cache)]), \
+                     mock.patch.object(runtime.sys.stdin,"isatty",return_value=False), \
+                     mock.patch.object(runtime,"download_wheel") as download, \
+                     mock.patch.object(runtime,"install_wheel") as install, \
+                     contextlib.redirect_stderr(io.StringIO()) as error, \
+                     contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as stopped:
+                    runtime.main()
+                self.assertEqual(stopped.exception.code,1)
+                self.assertIn("--accept-license",error.getvalue())
+                download.assert_not_called();install.assert_not_called()
+                self.assertFalse(destination.exists());self.assertFalse(cache.exists())
+
+    def test_terminal_requires_an_affirmative_answer(self):
+        for answer in ("", "n", "no", "anything", EOFError()):
+            with self.subTest(answer=answer), mock.patch.object(runtime.sys.stdin,"isatty",return_value=True), \
+                 mock.patch("builtins.input",side_effect=answer if isinstance(answer,Exception) else None,return_value=answer), \
+                 contextlib.redirect_stderr(io.StringIO()), self.assertRaisesRegex(ValueError,"not accepted"):
+                runtime.require_license_acceptance(False)
+
+    def test_explicit_flag_or_terminal_yes_allows_install_and_keeps_stdout_json(self):
+        for flags,interactive,answer in ((("--accept-license",),False,None),((),True,"yes")):
+            with self.subTest(flags=flags), mock.patch.object(runtime.sys,"argv",["kwin-vfx-runtime","--download",*flags]), \
+                 mock.patch.object(runtime.sys.stdin,"isatty",return_value=interactive), \
+                 mock.patch("builtins.input",return_value=answer) as prompt, \
+                 mock.patch.object(runtime,"download_wheel",return_value=Path("official.whl")) as download, \
+                 mock.patch.object(runtime,"install_wheel",return_value={"ready":True}) as install, \
+                 contextlib.redirect_stderr(io.StringIO()) as notice, contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(runtime.main(),0)
+            download.assert_called_once();install.assert_called_once()
+            self.assertEqual(json.loads(output.getvalue()),{"ready":True})
+            self.assertIn(runtime.TERMS,notice.getvalue())
+            self.assertEqual(prompt.call_count,int(interactive))
+
+    def test_status_needs_no_acceptance(self):
+        with mock.patch.object(runtime.sys,"argv",["kwin-vfx-runtime","--status"]), \
+             mock.patch.object(runtime,"require_license_acceptance") as acceptance, \
+             mock.patch.object(runtime,"runtime_status",return_value={"ready":True}), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runtime.main(),0)
+        acceptance.assert_not_called()
+
+    @unittest.skipIf(os.geteuid()==0,"The user installer refuses root")
+    def test_user_installer_forwards_acceptance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);bin_dir=root/"bin";bin_dir.mkdir()
+            cmake=bin_dir/"cmake";cmake.write_text("#!/bin/sh\nexit 0\n");cmake.chmod(0o755)
+            command=bin_dir/"kwin-vfx-runtime"
+            command.write_text("#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ['VFX_TEST_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n")
+            command.chmod(0o755);record=root/"arguments.json"
+            environment=dict(os.environ,PATH=str(bin_dir)+os.pathsep+os.environ["PATH"],VFX_TEST_ARGUMENTS=str(record))
+            subprocess.run(["bash",str(ROOT/"scripts/install-user.sh"),"--prefix",str(root),"--build-dir",str(root/"build"),
+                            "--no-setup","--download-runtime","--accept-license"],env=environment,check=True)
+            arguments=json.loads(record.read_text())
+            self.assertIn("--download",arguments);self.assertIn("--accept-license",arguments)
 
 
 class DesktopSetupTests(unittest.TestCase):

@@ -116,6 +116,16 @@ kwin-vfx-setup enable
 
 The supported wheel is **nvidia-vfx 0.2.0.0**, SHA256
 `0252866a7b798a6f92c8543443d88f716e8c5bbc6a7ddd77a2754728dada9fa8`.
+Before downloading or installing a local wheel, the helper displays a license
+notice and links, and asks for acceptance in a terminal (default **No**).
+For unattended installation, review the applicable NVIDIA terms and explicitly
+use `kwin-vfx-runtime --download --accept-license` or
+`scripts/install-user.sh --download-runtime --accept-license`.
+Without a terminal or that flag, the helper exits before downloading or
+installing the runtime. `--status` needs no acceptance and changes nothing.
+Acceptance is requested for each install invocation, including cached wheels;
+it is not inferred from a previous download or existing runtime.
+
 Native libraries and their complete bundled license files are kept together.
 Runtime installation publishes a new version directory atomically and refuses
 to overwrite an incomplete/different/unverified directory or mutate libraries a worker

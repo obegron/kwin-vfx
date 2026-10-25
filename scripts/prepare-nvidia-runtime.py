@@ -8,6 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
+import sys
 import tempfile
 import urllib.request
 import zipfile
@@ -17,6 +18,7 @@ WHEEL = f"nvidia_vfx-{VERSION}-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x
 URL = "https://pypi.nvidia.com/nvidia-vfx/" + WHEEL
 SHA256 = "0252866a7b798a6f92c8543443d88f716e8c5bbc6a7ddd77a2754728dada9fa8"
 TERMS = "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-software-license-agreement/"
+PRODUCT_TERMS = "https://www.nvidia.com/en-us/agreements/enterprise-software/product-specific-terms-for-ai-products/"
 METADATA = f"nvidia_vfx-{VERSION}.dist-info/METADATA"
 REQUIRED = (METADATA, "nvvfx/libs/libNVCVImage.so", "nvvfx/libs/libVideoFX.so",
             "nvvfx/libs/libnvVFXVideoSuperRes.so", "nvvfx/libs/libnvidia-ngx-vsr.so.1.8.3",
@@ -25,6 +27,29 @@ REQUIRED = (METADATA, "nvvfx/libs/libNVCVImage.so", "nvvfx/libs/libVideoFX.so",
 
 def default_runtime():
     return Path(os.environ.get("XDG_DATA_HOME", str(Path.home()/".local/share"))) / "kwin-vfx/runtime" / f"nvidia-vfx-{VERSION}"
+
+
+def require_license_acceptance(accepted):
+    print(f"NVIDIA VFX {VERSION} is proprietary software, licensed separately from KWin VFX.\n"
+          f"NVIDIA Software License Agreement: {TERMS}\n"
+          f"Product-specific terms: {PRODUCT_TERMS}\n"
+          "The wheel includes the May 2025 agreement and product-specific terms,\n"
+          "model licenses and third-party notices under its .dist-info/licenses directory.\n"
+          "The reference pages above may contain newer terms; review the bundled versions too.\n"
+          "Proceed only if you have reviewed and accept the applicable NVIDIA terms.",
+          file=sys.stderr, flush=True)
+    if accepted:
+        return
+    if sys.stdin.isatty():
+        print("Do you accept the applicable NVIDIA license terms? [y/N] ", end="", file=sys.stderr, flush=True)
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            answer = ""
+        if answer in ("y", "yes"):
+            return
+    raise ValueError("NVIDIA license not accepted; no download or installation was performed. "
+                     "For unattended installation, review the terms and pass --accept-license.")
 
 
 def verify_wheel(path):
@@ -81,7 +106,7 @@ def download_wheel(cache):
     if wheel.exists():
         verify_wheel(wheel)
         return wheel
-    print(f"Downloading directly from NVIDIA: {URL}\nNVIDIA terms: {TERMS}", flush=True)
+    print(f"Downloading directly from NVIDIA: {URL}\nNVIDIA terms: {TERMS}", file=sys.stderr, flush=True)
     with tempfile.NamedTemporaryFile(prefix=".nvidia-vfx-", dir=cache, delete=False) as file:
         temporary = Path(file.name)
         try:
@@ -99,6 +124,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog=f"NVIDIA's included licenses apply. Terms: {TERMS}")
     parser.add_argument("wheel", nargs="?", type=Path, help="Local official wheel (offline installation)")
     parser.add_argument("--download", action="store_true", help="Fetch the pinned wheel directly from NVIDIA")
+    parser.add_argument("--accept-license", action="store_true", help="Confirm you have reviewed and accept the applicable NVIDIA license terms")
     parser.add_argument("--output-dir", type=Path, default=default_runtime())
     parser.add_argument("--cache-dir", type=Path, default=Path(os.environ.get("XDG_CACHE_HOME",str(Path.home()/".cache")))/"kwin-vfx")
     parser.add_argument("--status", action="store_true", help="Inspect the native layout without changing anything")
@@ -109,6 +135,7 @@ def main():
             result = runtime_status(args.output_dir)
         else:
             if bool(args.wheel) == args.download: parser.error("Provide a local wheel or --download")
+            require_license_acceptance(args.accept_license)
             wheel = download_wheel(args.cache_dir) if args.download else args.wheel
             result = install_wheel(wheel,args.output_dir)
         print(json.dumps(result,indent=2))
