@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/opengl/kwin-vfx">
+        <file alias="filter.glsl">filter.glsl</file>
+        <file alias="cas.glsl">cas.glsl</file>
+    </qresource>
+</RCC>

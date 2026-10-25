@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/kwin-vfx">
+        <file alias="test.frag">shaders/test.frag</file>
+        <file alias="enhance.frag">shaders/enhance.frag</file>
+        <file alias="enhance-hdr.frag">shaders/enhance-hdr.frag</file>
+        <file alias="nvidia-input.frag">shaders/nvidia-input.frag</file>
+    </qresource>
+</RCC>

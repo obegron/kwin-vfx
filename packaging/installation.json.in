@@ -1,0 +1,9 @@
+{
+  "version": "@PROJECT_VERSION@",
+  "kwin_version": "6.8.1",
+  "prefix": "@CMAKE_INSTALL_PREFIX@",
+  "bindir": "@CMAKE_INSTALL_FULL_BINDIR@",
+  "plugin_root": "@KWIN_VFX_PLUGIN_ROOT@",
+  "nvidia_backend": @KWIN_VFX_NVIDIA_JSON@,
+  "user_plugin_path": @KWIN_VFX_USER_PLUGIN_PATH_JSON@
+}

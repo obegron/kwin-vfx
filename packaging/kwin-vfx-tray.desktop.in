@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KWin VFX
+Comment=Choose application windows to enhance from the system tray
+Exec="@CMAKE_INSTALL_FULL_BINDIR@/kwin-vfx-tray" --desktop
+Icon=preferences-desktop-display
+Terminal=false
+StartupNotify=false
+Categories=Utility;

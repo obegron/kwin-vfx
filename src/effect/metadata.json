@@ -1,0 +1,10 @@
+{
+    "KPlugin": {
+        "Id": "kwin_vfx",
+        "Name": "KWin VFX",
+        "Description": "Per-window sharpening, film grain and optional NVIDIA denoise, deblur and TrueHDR.",
+        "Category": "Tools",
+        "License": "GPL-2.0-or-later",
+        "EnabledByDefault": false
+    }
+}

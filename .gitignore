@@ -1,0 +1,21 @@
+/build*/
+/CMakeUserPresets.json
+__pycache__/
+*.pyc
+
+# Local test reports, captures and application profiles
+/docs/results/
+*.log
+/firefox-profile/
+
+# Downloaded proprietary runtimes and generated packages
+*.whl
+*.pkg.tar.*
+*.src.tar.*
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key

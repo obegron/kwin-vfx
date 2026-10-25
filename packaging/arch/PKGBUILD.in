@@ -1,0 +1,38 @@
+# KWin VFX source package. Generated with scripts/prepare-arch-package.py.
+pkgname=kwin-vfx@PACKAGE_SUFFIX@
+pkgver=0.0.1
+pkgrel=1
+pkgdesc='Per-window CAS, film grain and optional NVIDIA restoration for KWin Wayland'
+arch=('x86_64')
+url='https://github.com/obegron/kwin-vfx'
+license=('GPL-2.0-or-later' 'MIT')
+depends=('glibc' 'gcc-libs' 'kwin=6.8.1' 'qt6-base>=6.11.0' 'qt6-declarative'
+         'kconfig' 'kcoreaddons' 'kglobalaccel>=6.30' 'kwindowsystem' 'kdecoration'
+         'libepoxy' 'python' 'python-dbus'@NVIDIA_DEPENDENCY@)
+makedepends=('cmake' 'ninja' 'extra-cmake-modules' 'vulkan-headers'@CUDA_DEPENDENCY@)
+@PACKAGE_RELATIONS@
+source=("kwin-vfx-${pkgver}.tar.gz")
+sha256sums=('@SOURCE_SHA256@')
+options=('!debug')
+
+build() {
+    cmake -S "kwin-vfx-${pkgver}" -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+        -DKDE_INSTALL_PLUGINDIR=lib/qt6/plugins \
+        -DKWIN_VFX_BUILD_NVIDIA_BACKEND=@NVIDIA_OPTION@ \
+        -DKWIN_VFX_BUILD_PREVIEW_TRAY=ON -DKWIN_VFX_BUILD_SHADER_TESTS=ON \
+        -DKWIN_VFX_BUILD_SMOKE_CLIENT=OFF -DKWIN_VFX_BUILD_NVIDIA_PROBES=OFF
+    cmake --build build
+}
+
+check() {
+    # Package builds need neither a running compositor nor GPU access.
+    build/kwin_vfx_profile_reset_test
+    python "kwin-vfx-${pkgver}/tests/packaging_test.py"
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install build
+    install -Dm644 "kwin-vfx-${pkgver}/docs/packaging.md" \
+        "${pkgdir}/usr/share/doc/kwin-vfx/packaging.md"
+}
