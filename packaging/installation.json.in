@@ -1,6 +1,6 @@
 {
   "version": "@PROJECT_VERSION@",
-  "kwin_version": "6.8.1",
+  "kwin_version": "@KWin_VERSION@",
   "prefix": "@CMAKE_INSTALL_PREFIX@",
   "bindir": "@CMAKE_INSTALL_FULL_BINDIR@",
   "plugin_root": "@KWIN_VFX_PLUGIN_ROOT@",

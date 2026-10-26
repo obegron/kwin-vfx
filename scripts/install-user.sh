@@ -38,6 +38,7 @@ fi
 if [[ "$nvidia" == OFF && ( -n "$wheel_file" || "$download_runtime" == 1 ) ]]; then
     printf 'Runtime options require the NVIDIA build.\n' >&2; exit 2
 fi
+install_prefix=$(realpath -m "$install_prefix")
 cmake -S "$project_root" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="$install_prefix" \
     -DKDE_INSTALL_PLUGINDIR=lib/kwin-vfx/plugins \
@@ -48,7 +49,7 @@ if [[ -n "$stage_dir" ]]; then
     printf 'Staged user installation in %s; desktop settings were not changed.\n' "$stage_dir"
     exit 0
 fi
-cmake --install "$build_dir"
+python3 "$project_root/scripts/install-user-files.py" --build-dir "$build_dir" --prefix "$install_prefix"
 runtime_args=()
 if [[ -z "$runtime_root" && ( -n "$wheel_file" || "$download_runtime" == 1 ) ]]; then
     runtime_root="${XDG_DATA_HOME:-$HOME/.local/share}/kwin-vfx/runtime/nvidia-vfx-0.2.0.0"
@@ -62,3 +63,4 @@ if [[ "$setup" == 1 ]]; then
     if [[ -n "$runtime_root" ]]; then setup_args+=(--runtime-root "$runtime_root"); fi
     "$install_prefix/bin/kwin-vfx-setup" "${setup_args[@]}"
 fi
+printf 'User installation complete. Use a fresh login to use rebuilt compositor code.\n'

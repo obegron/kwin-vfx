@@ -1,0 +1,13 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = kwin
+
+[Action]
+Description = Rebuilding KWin VFX for the configured user (fresh login required)...
+When = PostTransaction
+Depends = util-linux
+Depends = cmake
+Depends = ninja
+Depends = python
+Exec = @COMMAND@

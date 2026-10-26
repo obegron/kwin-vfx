@@ -9,6 +9,8 @@ import io
 import json
 import os
 from pathlib import Path
+import pwd
+import shlex
 import subprocess
 import tarfile
 import tempfile
@@ -27,6 +29,8 @@ def module(name,file):
 runtime=module("vfx_runtime_setup","prepare-nvidia-runtime.py")
 setup=module("vfx_desktop_setup","setup-desktop.py")
 package=module("vfx_arch_setup","prepare-arch-package.py")
+user_files=module("vfx_user_files","install-user-files.py")
+user_hook=module("vfx_user_hook","prepare-user-hook.py")
 
 
 class RuntimeTests(unittest.TestCase):
@@ -135,15 +139,93 @@ class RuntimeLicenseTests(unittest.TestCase):
     def test_user_installer_forwards_acceptance(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);bin_dir=root/"bin";bin_dir.mkdir()
-            cmake=bin_dir/"cmake";cmake.write_text("#!/bin/sh\nexit 0\n");cmake.chmod(0o755)
+            cmake=bin_dir/"cmake"
+            cmake.write_text('#!/bin/sh\nif [ "$1" = --install ]; then\nmkdir -p "$DESTDIR$VFX_TEST_INSTALL_PREFIX/share/kwin-vfx"\nprintf "{}\\n" > "$DESTDIR$VFX_TEST_INSTALL_PREFIX/share/kwin-vfx/installation.json"\nfi\nexit 0\n')
+            cmake.chmod(0o755);(root/"build").mkdir()
             command=bin_dir/"kwin-vfx-runtime"
             command.write_text("#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ['VFX_TEST_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n")
             command.chmod(0o755);record=root/"arguments.json"
-            environment=dict(os.environ,PATH=str(bin_dir)+os.pathsep+os.environ["PATH"],VFX_TEST_ARGUMENTS=str(record))
+            environment=dict(os.environ,PATH=str(bin_dir)+os.pathsep+os.environ["PATH"],VFX_TEST_ARGUMENTS=str(record),VFX_TEST_INSTALL_PREFIX=str(root))
             subprocess.run(["bash",str(ROOT/"scripts/install-user.sh"),"--prefix",str(root),"--build-dir",str(root/"build"),
                             "--no-setup","--download-runtime","--accept-license"],env=environment,check=True)
             arguments=json.loads(record.read_text())
             self.assertIn("--download",arguments);self.assertIn("--accept-license",arguments)
+
+
+class UserInstallationTests(unittest.TestCase):
+    def test_install_replaces_inode_and_preserves_an_open_library(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);build=root/"build";build.mkdir();prefix=root/"prefix"
+            destination=prefix/"lib/plugin.so";destination.parent.mkdir(parents=True);destination.write_bytes(b"old library")
+            def stage(command,env,check):
+                source=Path(env["DESTDIR"])/prefix.relative_to(prefix.anchor)/"lib/plugin.so"
+                source.parent.mkdir(parents=True);source.write_bytes(b"new library");source.chmod(0o755)
+            with destination.open("rb") as running, mock.patch.object(user_files.subprocess,"run",side_effect=stage):
+                inode=destination.stat().st_ino
+                user_files.install(build,prefix)
+                self.assertNotEqual(destination.stat().st_ino,inode)
+                self.assertEqual(running.read(),b"old library")
+                self.assertEqual(destination.read_bytes(),b"new library")
+                self.assertEqual(destination.stat().st_mode&0o777,0o755)
+
+    def test_staging_failure_leaves_installed_library_untouched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);build=root/"build";build.mkdir();prefix=root/"prefix";prefix.mkdir()
+            destination=prefix/"plugin.so";destination.write_bytes(b"old")
+            with mock.patch.object(user_files.subprocess,"run",side_effect=subprocess.CalledProcessError(1,"cmake")), \
+                 self.assertRaises(subprocess.CalledProcessError):user_files.install(build,prefix)
+            self.assertEqual(destination.read_bytes(),b"old")
+            self.assertEqual(list(build.iterdir()),[])
+
+    def test_staged_symlinks_are_rejected_before_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);build=root/"build";build.mkdir();prefix=root/"prefix";prefix.mkdir()
+            destination=prefix/"plugin.so";destination.write_bytes(b"old")
+            def stage(command,env,check):
+                payload=Path(env["DESTDIR"])/prefix.relative_to(prefix.anchor);payload.mkdir(parents=True)
+                (payload/"plugin.so").write_bytes(b"new")
+                (payload/"link").symlink_to(destination)
+            with mock.patch.object(user_files.subprocess,"run",side_effect=stage),self.assertRaisesRegex(ValueError,"symlink"):
+                user_files.install(build,prefix)
+            self.assertEqual(destination.read_bytes(),b"old")
+
+
+class UserHookTests(unittest.TestCase):
+    def test_hook_drops_privileges_and_installs_without_pacman_or_desktop_setup(self):
+        user=pwd.struct_passwd(("test-user","x",1000,1000,"","/home/test user","/bin/bash"))
+        text=user_hook.hook_text(ROOT,user,"/home/test user/.local","/tmp/vfx build",["/tmp/dependencies"],True)
+        command=shlex.split(next(line.removeprefix("Exec = ") for line in text.splitlines() if line.startswith("Exec = ")))
+        self.assertEqual(command[:6],["/usr/bin/runuser","-u","test-user","--","/usr/bin/env","-i"])
+        self.assertIn("HOME=/home/test user",command)
+        self.assertIn("CMAKE_PREFIX_PATH=/tmp/dependencies",command)
+        self.assertIn("/usr/bin/flock",command)
+        self.assertIn("--no-setup",command);self.assertIn("--shader-only",command)
+        self.assertNotIn("pacman",command);self.assertNotIn("makepkg",command)
+        self.assertNotIn("--download-runtime",command)
+        self.assertIn("Operation = Upgrade",text);self.assertIn("Target = kwin",text)
+
+    def test_hook_rejects_root_and_multiline_arguments(self):
+        with self.assertRaisesRegex(ValueError,"normal user"):
+            user_hook.hook_text(ROOT,pwd.struct_passwd(("root","x",0,0,"","/root","/bin/bash")),"/tmp","/tmp")
+        with self.assertRaisesRegex(ValueError,"newlines"):
+            user_hook.quote("/tmp/bad\nExec = another-command")
+
+    def test_hook_command_handles_spaces_without_executing_path_contents(self):
+        with tempfile.TemporaryDirectory(prefix="vfx hook ") as directory:
+            root=Path(directory);(root/"scripts").mkdir();(root/"packaging/arch").mkdir(parents=True)
+            (root/"packaging/arch/kwin-vfx-user.hook.in").write_text((ROOT/"packaging/arch/kwin-vfx-user.hook.in").read_text())
+            record=root/"arguments.json"
+            (root/"scripts/install-user.sh").write_text("#!/bin/bash\n/usr/bin/python3 -c "+shlex.quote(
+                "import json,os,sys;from pathlib import Path;Path("+repr(str(record))+").write_text(json.dumps({'args':sys.argv[1:],'home':os.environ['HOME']}))")+' "$@"\n')
+            build=root/"build";build.mkdir();prefix=root/'prefix $(touch unexpected)'
+            user=pwd.struct_passwd(("test-user","x",1000,1000,"",str(root/"home"),"/bin/bash"))
+            text=user_hook.hook_text(root,user,prefix,build)
+            command=shlex.split(next(line.removeprefix("Exec = ") for line in text.splitlines() if line.startswith("Exec = ")))
+            # Run only the unprivileged command, as the test already runs under its own UID.
+            subprocess.run(command[4:],check=True)
+            result=json.loads(record.read_text())
+            self.assertIn(str(prefix),result["args"]);self.assertEqual(result["home"],user.pw_dir)
+            self.assertFalse((root/"unexpected").exists())
 
 
 class DesktopSetupTests(unittest.TestCase):

@@ -43,8 +43,8 @@ accept **KWin >=6.8.1 and <6.9** for source builds. CMake records the actual
 installed KWin version, and `package()` uses it for the binary's exact runtime
 dependency (for example, `kwin=6.8.2` when built against 6.8.2). KWin's plugin
 loader requires that full version match, so rebuild after every KWin version
-update and use a fresh login. Rebuilding is manual; no automatic rebuild hook
-is installed. Only 6.8.1 is currently verified; later patch releases still need
+update and use a fresh login. The optional user-install hook below can automate
+rebuilding; packages do not install hooks by default. Only 6.8.1 is currently verified; later patch releases still need
 validation, and other minor releases need compatibility review.
 GPU/compositor tests are separate from `makepkg check()`;
 the package's checks cover the CPU-only profiler and offline installer/archive
@@ -108,6 +108,46 @@ silently install system dependencies; `makepkg -si` is the dependency-managed ro
 without changing desktop settings. `--stage DIR` installs into a test staging
 root and skips runtime downloads and live setup. Inspect configuration changes
 without applying them using `kwin-vfx-setup enable --user-plugin-path --dry-run`.
+
+## Automatic rebuilds for a user installation
+
+After completing the user installation above, generate a hook for your account
+and checkout, review it, then install it:
+
+```sh
+python3 scripts/prepare-user-hook.py
+cat build-hook/kwin-vfx.hook
+sudo install -Dm644 build-hook/kwin-vfx.hook /etc/pacman.d/hooks/kwin-vfx.hook
+```
+
+Use `--shader-only` for a shader build. `--prefix`, `--build-dir` and
+`--cmake-prefix` support custom installation/build/dependency locations.
+The NVIDIA hook captures the CUDA toolkit path from `nvcc` or `CUDAToolkit_ROOT`
+when available; `--cuda-root` sets it explicitly for the hook's clean environment.
+Generated hooks contain local account and checkout paths and stay under the
+ignored build directory. Regenerate the hook if the checkout moves.
+
+On a KWin upgrade, pacman runs the hook as root; `runuser` immediately switches
+to the configured account with a clean environment. That account runs the
+source installer with `--no-setup`. The hook rebuilds synchronously from the
+existing checkout and atomically replaces files in the user prefix, preserving
+the old library inode for the running compositor. A build lock prevents two
+hook builds from overlapping. A fresh login activates the rebuilt code.
+
+This route uses the existing runtime and installed build dependencies. Build
+output and failures appear in the pacman terminal. Unsupported KWin versions
+fail the CMake version check and leave the previous installation in place;
+update the source for compatibility before retrying the source installer.
+
+Avoid `makepkg -s` or `-i` inside a hook: those options invoke pacman, whose
+outer transaction still holds the database lock. A pacman-installed KWin VFX
+package with an exact dependency can also block the KWin upgrade before any
+post-transaction hook runs. The generator therefore requires a user installation
+without either KWin VFX package installed. See the
+[hook format](https://man.archlinux.org/man/alpm-hooks.5.en) and
+[makepkg options](https://man.archlinux.org/man/makepkg.8.en).
+
+Remove `/etc/pacman.d/hooks/kwin-vfx.hook` to disable automatic rebuilding.
 
 ## NVIDIA runtime and distribution
 
